@@ -10,7 +10,8 @@ color_index = 0
 
 
 def clamp(num, min_value, max_value):
-   return max(min(num, max_value), min_value)
+    return max(min(num, max_value), min_value)
+
 
 def click_event(event, x, y, flags, param):
     global selected_colors, color_index
@@ -19,10 +20,12 @@ def click_event(event, x, y, flags, param):
         selected_colors[color_index] = selected_color
         detect_colors(selected_colors)
 
+
 def trackbar_event(value):
     global color_index
     color_index = value
     print(color_index)
+
 
 def detect_colors(colors, color_areas):
     global frame
@@ -49,29 +52,34 @@ def detect_colors(colors, color_areas):
                 area = cv2.contourArea(contour)
                 if area > 100:
                     x, y, w, h = cv2.boundingRect(contour)
-                    frame = cv2.rectangle(frame, (x, y), (x + w, y + h), (int(color[0]), int(color[1]), int(color[2])), 2)
+                    frame = cv2.rectangle(frame, (x, y), (x + w, y + h), (int(color[0]), int(color[1]), int(color[2])),
+                                          2)
                     area_sum += area
             color_areas[index] = area_sum
-            print(color_areas)
+            # print(color_areas)
+
 
 def send_osc(osc_client, color_areas):
     areas_sum = sum(color_areas)
     if areas_sum > 0:
         for index, color_area in enumerate(color_areas):
-            osc_client.send_message("/colors/absolute/"+str(index), color_area)
-            osc_client.send_message("/colors/relative/"+str(index), color_area/areas_sum)
-                    
+            relative_area = color_area / areas_sum
+            print(f"{relative_area:.2f}", end=" ")
+            osc_client.send_message("/colors/absolute/" + str(index), color_area)
+            osc_client.send_message("/colors/relative/" + str(index), relative_area)
+        print("")
+
 
 def main():
     global selected_colors, frame, color_areas
 
     osc_client = udp_client.SimpleUDPClient("127.0.0.1", 5555)
 
-    cap = cv2.VideoCapture(0)
+    # path to video-file or int for camera
+    cap = cv2.VideoCapture("/Users/michaelott/Movies/iceland.mov")
     cv2.namedWindow("Color Tracking")
     cv2.setMouseCallback("Color Tracking", click_event)
     cv2.createTrackbar("Color Nr.", "Color Tracking", 0, max_colors - 1, trackbar_event)
-
 
     while True:
         ret, frame = cap.read()
@@ -89,6 +97,7 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()
