@@ -1,69 +1,73 @@
-from tkinter import *
-from PIL import Image, ImageTk
 import cv2
 import numpy as np
 
-colors = {
-    "red": [[136,100,100],[180,255,255]]
-}
+selected_color = None
+frame = None
+color_index = 0
 
-def mouse_event(event):
-    hsv = cv2image[event.y][eventx]
-    color_range = get_color_range(hsv)
-    print(color_range)
-    colors["red"] = color_range
+def clamp(num, min_value, max_value):
+   return max(min(num, max_value), min_value)
 
-def get_color_range(h, s, v):
-    custom_lower = np.array([clamp(hsv[0]-9, 0, 179),
-                                clamp(hsv[1]-9, 0, 255),
-                                clamp(hsv[2]-9, 0, 255)], np.uint8)
-    custom_upper = np.array([clamp(hsv[0]+9, 0, 179),
-                                clamp(hsv[1]+9, 0, 255),
-                                clamp(hsv[2]+9, 0, 255)], np.uint8)
-    return [custom_lower, custom_upper]
-        
+def click_event(event, x, y, flags, param):
+    global selected_color
+    if event == cv2.EVENT_LBUTTONDOWN:
+        selected_color = frame[y, x]
+        detect_color(selected_color)
 
+def trackbar_event(value):
+    global color_index
+    color_index = value
+    print(color_index)
 
-win = Tk()
+def detect_color(color):
+    global frame
+    print(color)
+    if color is not None:
+        hsv_color = cv2.cvtColor(np.uint8([[color]]), cv2.COLOR_BGR2HSV)[0][0]
+        lower_bound = np.array([clamp(hsv_color[0] - 10, 0, 179),
+                                clamp(hsv_color[1] - 10, 0, 255),
+                                clamp(hsv_color[2] - 10, 0, 255)])
+        upper_bound = np.array([clamp(hsv_color[0] + 10, 0, 179),
+                                clamp(hsv_color[1] + 10, 0, 255),
+                                clamp(hsv_color[2] + 10, 0, 255)])
 
-win.geometry("700x350")
-win.bind('<Button-1>', mouse_event)
-label = Label(win)
-label.grid(row=0, column=0)
-cap = cv2.VideoCapture(0)
+        hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv_frame, lower_bound, upper_bound)
+        # the following 3 lines do not seem terribly necessary
+        # kernel = np.ones((5, 5), "uint8")
+        # mask = cv2.dilate(mask, kernel)
+        # res = cv2.bitwise_and(frame, frame, mask=mask)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-def show_frames():
-    cv2image = cv2.cvtColor(cap.read()[1], cv2.COLOR_BGR2HSV)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 100:
+                x, y, w, h = cv2.boundingRect(contour)
+                frame = cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-    # generate mask
-    thresh_low = np.array(colors["red"][0], np.uint8)
-    thresh_high = np.array(colors["red"][1], np.uint8)
-    mask = cv2.inRange(cv2image, thresh_low, thresh_high)
+def main():
+    global selected_color, frame
 
-    kernel = np.ones((5, 5), "uint8")
+    cap = cv2.VideoCapture(0)
+    cv2.namedWindow("Color Tracking")
+    cv2.setMouseCallback("Color Tracking", click_event)
+    cv2.createTrackbar("Color Index", "Color Tracking", 0, 3, trackbar_event)
 
-    mask = cv2.dilate(mask, kernel)
-    result = cv2.bitwise_and(cv2image, cv2image, mask=mask) #tut uses original webcam image here (not HSV)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    # draw contours
-    contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    for pic, contour in enumerate(contours):
-        area = cv2.contourArea(contour)
-        if (area > 300):
-            x, y, w, h = cv2.boundingRect(contour)
-            imageFrame = cv2.rectangle(cv2image, (x, y), 
-                                    (x + w, y + h), 
-                                    (255, 255, 255), 2)
+        if selected_color is not None:
+            detect_color(selected_color)
 
-    # display image
-    cv2image = cv2.cvtColor(cv2image, cv2.COLOR_HSV2RGB)
-    img = Image.fromarray(cv2image)
+        cv2.imshow("Color Tracking", frame)
 
-    imgtk = ImageTk.PhotoImage(image=img)
-    label.imgtk = imgtk
-    label.configure(image=imgtk)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-    label.after(10, show_frames)
+    cap.release()
+    cv2.destroyAllWindows()
 
-show_frames()
-win.mainloop()
+if __name__ == "__main__":
+    main()
